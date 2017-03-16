@@ -82,6 +82,10 @@ public abstract class Piece {
 
     public abstract Piece movePiece(Move move);
 
+    public int getCachedHashCode() {
+        return cachedHashCode;
+    }
+
     public enum PieceType {
         PAWN(100, "P") {
             @Override

@@ -480,6 +480,8 @@ public abstract class Move {
 
         @Override
         public boolean equals(final Object other) {
+            if (other instanceof NullMove)
+                return true;
             return false;
         }
     }

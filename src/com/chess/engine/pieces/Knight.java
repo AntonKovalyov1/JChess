@@ -40,7 +40,7 @@ public class Knight extends Piece {
                 if(isFirstColumnExclusion(this.piecePosition, candidateOffset) ||
                         isEigthColumnExclusion(this.piecePosition, candidateOffset) ||
                         isSecondColumnExclusion(this.piecePosition, candidateOffset) ||
-                        isSecondColumnExclusion(this.piecePosition, candidateOffset)) {
+                        isSeventhColumnExclusion(this.piecePosition, candidateOffset)) {
                     continue;
                 }
                 final Tile candidateDestinationTile = board.getTile(candidateDestinationCoordinate);
@@ -62,7 +62,7 @@ public class Knight extends Piece {
 
     @Override
     public Knight movePiece(final Move move) {
-        return new Knight(move.getMovedPiece().getPieceAlliance(), move.getDestinationCoordinate());
+        return new Knight(move.getMovedPiece().getPieceAlliance(), move.getDestinationCoordinate(), false);
     }
 
     private static boolean isFirstColumnExclusion(final int currentPosition, final int candidateOffset) {
