@@ -3,6 +3,7 @@ package com.chess.engine.board;
 import com.chess.engine.Alliance;
 import com.chess.engine.player.BlackPlayer;
 import com.chess.engine.player.Player;
+import com.chess.engine.player.PlayerType;
 import com.chess.engine.player.WhitePlayer;
 import com.chess.engine.pieces.*;
 import com.google.common.collect.ImmutableList;
@@ -31,8 +32,8 @@ public class Board {
         final Collection<Move> whiteStandardLegalMoves = calculateLegalMoves(this.whitePieces);
         final Collection<Move> blackStandardLegalMoves = calculateLegalMoves(this.blackPieces);
 
-        this.whitePlayer = new WhitePlayer(this, whiteStandardLegalMoves, blackStandardLegalMoves);
-        this.blackPlayer = new BlackPlayer(this, whiteStandardLegalMoves, blackStandardLegalMoves);
+        this.whitePlayer = new WhitePlayer(this, whiteStandardLegalMoves, blackStandardLegalMoves, builder.whitePlayerType);
+        this.blackPlayer = new BlackPlayer(this, whiteStandardLegalMoves, blackStandardLegalMoves, builder.blackPlayerType);
         this.currentPlayer = builder.nextMoveMaker.choosePlayer(this.whitePlayer, this.blackPlayer);
     }
 
@@ -109,7 +110,7 @@ public class Board {
         return ImmutableList.copyOf(tiles);
     }
 
-    public static Board createStandardBoard() {
+    public static Builder createStandardBoardBuilder() {
         final Builder builder = new Builder();
         // Black
         builder.setPiece(new Rook(Alliance.BLACK, 0));
@@ -148,6 +149,18 @@ public class Board {
         // White to move
         builder.setMoveMaker(Alliance.WHITE);
 
+        return builder;
+    }
+
+    public static Board createStandardBoard() {
+        return createStandardBoardBuilder().build();
+    }
+
+    public static Board createStandardGameBoard(PlayerType whitePlayerType, PlayerType blackPlayerType) {
+        final Builder builder = createStandardBoardBuilder();
+        builder.setWhitePlayerType(whitePlayerType);
+        builder.setBlackPlayerType(blackPlayerType);
+
         return builder.build();
     }
 
@@ -160,6 +173,8 @@ public class Board {
         Map<Integer, Piece> boardConfig;
         Alliance nextMoveMaker;
         Pawn enPassantPawn;
+        PlayerType whitePlayerType = PlayerType.HUMAN;
+        PlayerType blackPlayerType = PlayerType.HUMAN;
 
         public Builder() {
             this.boardConfig = new HashMap<>();
@@ -181,6 +196,14 @@ public class Board {
 
         public void setEnPassantPawn(Pawn enPassantPawn) {
             this.enPassantPawn = enPassantPawn;
+        }
+
+        public void setWhitePlayerType(PlayerType whitePlayerType) {
+            this.whitePlayerType = whitePlayerType;
+        }
+
+        public void setBlackPlayerType(PlayerType blackPlayerType) {
+            this.blackPlayerType = blackPlayerType;
         }
     }
 }

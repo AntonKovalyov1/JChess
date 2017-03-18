@@ -65,8 +65,12 @@ public class CreateGame extends Stage {
         playButton.setOnAction(e -> {
             try {
                 numberOfGames = Integer.parseInt(numberOfGamesField.getText());
-                if (getNumberOfGames() < 1 || getNumberOfGames() > 999)
+                if (getNumberOfGames() < 1 || getNumberOfGames() > 999) {
                     throw new Exception();
+                }
+                else {
+                    close();
+                }
             }
             catch (Exception ex) {
                 errorText.setText("Please enter a number from 1 to 999");
@@ -95,7 +99,7 @@ public class CreateGame extends Stage {
         setTitle("Match");
         setResizable(false);
         initModality(Modality.APPLICATION_MODAL);
-        show();
+        showAndWait();
     }
 
     public int getNumberOfGames() {

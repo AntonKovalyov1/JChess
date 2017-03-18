@@ -23,6 +23,7 @@ import javafx.beans.value.ObservableValue;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.effect.BlurType;
@@ -40,57 +41,31 @@ import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 public class GUI extends Stage {
 
-    private final BoardPane boardPane;
-    private Board chessBoard = Board.createStandardBoard();
-
-    private Tile sourceTile;
-    private Tile destinationTile;
-    private Piece humanMovedPiece;
     private BoardDirection boardDirection;
-    private MoveLog moveLog;
     private boolean highlightLegalMoves;
     private boolean cheat;
-    private Move lastMove;
+    private BorderPane mainBorderPane = new BorderPane();
+    private BoardPane boardPane = new BoardPane(Board.createStandardBoard());
 
     private final int TILE_DIMENSION = 60;
+    private final int GAME_DIMENSION = 60 * 9;
 
     public GUI() {
         this.highlightLegalMoves = false;
         this.boardDirection = BoardDirection.NORMAL;
-        this.moveLog = new MoveLog();
-        this.lastMove = null;
-        this.boardPane = new BoardPane();
         initialize();
     }
 
     private void initialize() {
-        this.boardPane.setAlignment(Pos.CENTER);
-        StackPane boardBackground = new StackPane();
-        boardBackground.setPadding(new Insets(20,20,20,20));
-        boardBackground.getChildren().add(this.boardPane);
-        boardBackground.setStyle("-fx-background-image: url('images/boardbackground.jpg'); " +
-                "-fx-background-repeat: no-repeat; " +
-                "-fx-background-size: cover");
-        InnerShadow innerShadow = new InnerShadow();
-        innerShadow.setOffsetX(-1);
-        innerShadow.setOffsetY(-1);
-        innerShadow.setColor(Color.web("#EBCCAD", 0.6));
-
-        boardPane.setEffect(innerShadow);
-        boardBackground.setAlignment(Pos.CENTER);
-        BorderPane mainBorderPane = new BorderPane();
+        Game game = new Game(boardPane);
         mainBorderPane.setTop(createMenuBar());
-        mainBorderPane.setCenter(boardBackground);
-        mainBorderPane.setMargin(boardBackground, new Insets(40,40,40,40));
+        mainBorderPane.setCenter(game);
+        mainBorderPane.setMargin(game, new Insets(20,20,20,20));
         Scene scene = new Scene(mainBorderPane);
-        scene.getStylesheets().add("main.css");
         setScene(scene);
         setTitle("Blindfold Chess Trainer");
         show();
@@ -106,19 +81,19 @@ public class GUI extends Stage {
         final CheckMenuItem cheatCheckMenuItem = new CheckMenuItem("Cheat");
         cheatCheckMenuItem.setOnAction(e -> {
             cheat = cheatCheckMenuItem.isSelected();
-            updateBoard();
+            this.boardPane.updateBoard(boardPane.board);
         });
 
         final MenuItem flipBoardMenuItem = new MenuItem("Flip Board");
         flipBoardMenuItem.setOnAction(e -> {
             boardDirection = boardDirection.opposite();
-            updateBoard();
+            this.boardPane.updateBoard(boardPane.board);
         });
 
         final CheckMenuItem highlightCheckMenuItem = new CheckMenuItem("Highlight legal moves");
         highlightCheckMenuItem.setOnAction(e -> {
             highlightLegalMoves = highlightCheckMenuItem.isSelected();
-            updateBoard();
+            this.boardPane.updateBoard(boardPane.board);
         });
         highlightCheckMenuItem.setSelected(true);
         highlightLegalMoves = true;
@@ -127,6 +102,11 @@ public class GUI extends Stage {
         final MenuItem newGameMenuItem = new MenuItem("New Game/s");
         newGameMenuItem.setOnAction(e -> {
             CreateGame createGame = new CreateGame();
+            if (createGame.getNumberOfGames() != -1) {
+                final int numberOfGames = createGame.getNumberOfGames();
+                final ColorChoice colorChoice = createGame.getColorChoice();
+                final Difficulty difficulty = createGame.getDifficulty();
+            }
         });
 
         final MenuItem addGameMenuItem = new MenuItem("Add Game/s");
@@ -153,30 +133,59 @@ public class GUI extends Stage {
         return menuBar;
     }
 
-    private void updateBoard() {
-        Platform.runLater(new Runnable() {
-            @Override
-            public void run() {
-                boardPane.drawBoard(chessBoard);
-            }
-        });
-    }
+    public final class Game extends StackPane {
 
-    enum PlayerType {
-        HUMAN,
-        COMPUTER
+        private final StackPane boardBackground = new StackPane();
+        private final BoardPane boardPane;
+
+        public Game(BoardPane boardPane) {
+            this.boardPane = boardPane;
+            initialize();
+        }
+
+        private void initialize() {
+            setPadding(new Insets(15,15,15,15));
+            this.boardPane.setAlignment(Pos.CENTER);
+            this.boardBackground.getChildren().add(boardPane);
+            getChildren().add(boardBackground);
+            drawBackground();
+        }
+
+        private void drawBackground() {
+            boardBackground.setPadding(new Insets(15,15,15,15));
+            boardBackground.setAlignment(Pos.CENTER);
+            boardBackground.setStyle("-fx-background-image: url('images/boardbackground.jpg'); " +
+                                     "-fx-background-repeat: no-repeat; " +
+                                     "-fx-background-size: cover");
+            setBoardInsideBackgroundEffect();
+        }
+
+        private void setBoardInsideBackgroundEffect() {
+            InnerShadow innerShadow = new InnerShadow();
+            innerShadow.setOffsetX(-1);
+            innerShadow.setOffsetY(-1);
+            innerShadow.setColor(Color.web("#EBCCAD", 0.6));
+
+            boardPane.setEffect(innerShadow);
+        }
     }
 
     public final class BoardPane extends GridPane {
 
-        final List<TilePane> boardTiles;
+        final List<TilePane> boardTiles = new ArrayList<>();
+        final Stack<Move> moves = new Stack<>();
+        private Board board;
+        private Piece pieceToMove;
+        private Tile sourceTile;
+        private Tile destinationTile;
+        private boolean gameOver;
 
-        public BoardPane() {
-            this.boardTiles = new ArrayList<>();
+        public BoardPane(Board board) {
+            this.board = board;
             int tileIndex = 0;
             for (int i = 0; i < BoardUtils.NUM_TILES_PER_ROW; i++) {
                 for (int j = 0; j < BoardUtils.NUM_TILES_PER_ROW; j++) {
-                    final TilePane tilePane = new TilePane(tileIndex);
+                    final TilePane tilePane = new TilePane(this, tileIndex);
                     this.boardTiles.add(tilePane);
                     add(tilePane, j, i);
                     tileIndex++;
@@ -184,7 +193,9 @@ public class GUI extends Stage {
             }
         }
 
-        public void drawBoard(final Board board) {
+        public void updateBoard(Board board) {
+            this.board = board;
+            isGameOver(board);
             getChildren().clear();
             int index = 0;
             for (int i = 0; i < BoardUtils.NUM_TILES_PER_ROW; i++) {
@@ -195,64 +206,81 @@ public class GUI extends Stage {
                 }
             }
         }
+
+        private void isGameOver(final Board board) {
+            if (board.currentPlayer().isInCheckMate()){
+                gameOver = true;
+                //TODO
+            }
+            else if (board.currentPlayer().isInStalemate()) {
+                gameOver = true;
+                //TODO
+            }
+        }
+
+        private void setPieceToMove(Piece pieceToMove) {
+            this.pieceToMove = pieceToMove;
+        }
+
+        private void setSourceTile(Tile sourceTile) {
+            this.sourceTile = sourceTile;
+        }
+
+        private void setDestinationTile(Tile destinationTile) {
+            this.destinationTile = destinationTile;
+        }
     }
 
     public final class TilePane extends StackPane {
 
         private final int tileID;
+        private final BoardPane boardPane;
         private final String WHITE_TILE = "-fx-background-image: url('images/lightwoodtile.jpg');";
         private final String BLACK_TILE = "-fx-background-image: url('images/darkwoodtile.jpg');";
 
-        public TilePane(final int tileID) {
+        public TilePane(final BoardPane boardPane, final int tileID) {
+            this.boardPane = boardPane;
             this.tileID = tileID;
-            drawTile(chessBoard);
+            drawTile(boardPane.board);
 
             setOnMouseClicked(e -> {
-                if (chessBoard.currentPlayer().getAlliance().isWhite()) {
+                Board chessBoard = boardPane.board;
+                if (!boardPane.gameOver && chessBoard.currentPlayer().getPlayerType().isHuman()) {
                     if (e.getButton() == MouseButton.PRIMARY) {
-                        if (sourceTile == null) {
+                        if (boardPane.sourceTile == null) {
                             // first click
-                            sourceTile = chessBoard.getTile(tileID);
-                            humanMovedPiece = sourceTile.getPiece();
-                            if (humanMovedPiece == null ||
-                                humanMovedPiece.getPieceAlliance() != chessBoard.currentPlayer().getAlliance()) {
-                                sourceTile = null;
+                            boardPane.sourceTile = chessBoard.getTile(tileID);
+                            boardPane.pieceToMove = boardPane.sourceTile.getPiece();
+                            if (boardPane.pieceToMove == null ||
+                                    boardPane.pieceToMove.getPieceAlliance() != chessBoard.currentPlayer().getAlliance()) {
+                                boardPane.setSourceTile(null);
                             }
-                        }
-                        else {
+                        } else {
                             // second click
-                            destinationTile = chessBoard.getTile(tileID);
+                            boardPane.setDestinationTile(chessBoard.getTile(tileID));
                             final Move move = Move.MoveFactory.createMove(chessBoard,
-                                    sourceTile.getTileCoordinate(),
-                                    destinationTile.getTileCoordinate());
+                                    boardPane.sourceTile.getTileCoordinate(),
+                                    boardPane.destinationTile.getTileCoordinate());
                             final MoveTransition transition = chessBoard.currentPlayer().makeMove(move);
                             if (transition.getMoveStatus().isDone()) {
-                                lastMove = move;
+                                boardPane.moves.add(move);
                                 chessBoard = transition.getTransitionBoard();
-                                moveLog.addMove(move);
-                                AIThinker ai = new AIThinker();
-                                Thread thread = new Thread(ai);
-                                thread.setPriority(Thread.MAX_PRIORITY);
-                                thread.start();
-
-                                //TODO add the move that was made to the move log
                             }
-                            sourceTile = null;
-                            destinationTile = null;
-                            humanMovedPiece = null;
+                            resetMoveSelection();
                         }
 
+                    } else if (e.getButton() == MouseButton.SECONDARY) {
+                        resetMoveSelection();
                     }
-
-                    else if (e.getButton() == MouseButton.SECONDARY) {
-                        sourceTile = null;
-                        destinationTile = null;
-                        humanMovedPiece = null;
-                    }
-
-                    updateBoard();
+                    this.boardPane.updateBoard(chessBoard);
                 }
             });
+        }
+
+        private void resetMoveSelection() {
+            boardPane.setSourceTile(null);
+            boardPane.setDestinationTile(null);
+            boardPane.setPieceToMove(null);
         }
 
         private void drawTile(final Board board) {
@@ -265,15 +293,16 @@ public class GUI extends Stage {
         private void assignSelectionRectangle(final Board board) {
             Rectangle selectionRectangle = new Rectangle(TILE_DIMENSION, TILE_DIMENSION);
             selectionRectangle.setFill(Color.TRANSPARENT);
-            if (sourceTile != null) {
-                if (sourceTile.getTileCoordinate() == this.tileID) {
-                    highlightSourceSquare(selectionRectangle, humanMovedPiece.getPieceAlliance());
+            if (boardPane.sourceTile != null) {
+                if (boardPane.sourceTile.getTileCoordinate() == this.tileID) {
+                    highlightSourceSquare(selectionRectangle, boardPane.pieceToMove.getPieceAlliance());
                 }
                 else {
                     highlightLegals(selectionRectangle, board);
                 }
             }
-            else {
+            else if (!boardPane.moves.isEmpty()){
+                Move lastMove = boardPane.moves.peek();
                 if (lastMove != null) {
                     if (lastMove.getCurrentCoordinate() == tileID) {
                         highlightSourceSquare(selectionRectangle, lastMove.getMovedPiece().getPieceAlliance());
@@ -336,11 +365,11 @@ public class GUI extends Stage {
 
         private void highlightLegals(final Rectangle selectionRectangle, final Board board) {
             if(highlightLegalMoves) {
-                if(humanMovedPiece != null && humanMovedPiece.getPieceAlliance() == board.currentPlayer().getAlliance()) {
-                    final Move move = Move.MoveFactory.createMove(chessBoard, sourceTile.getTileCoordinate(), this.tileID);
-                    final MoveTransition transition = chessBoard.currentPlayer().makeMove(move);
+                if(boardPane.pieceToMove != null && boardPane.pieceToMove.getPieceAlliance() == board.currentPlayer().getAlliance()) {
+                    final Move move = Move.MoveFactory.createMove(board, boardPane.sourceTile.getTileCoordinate(), this.tileID);
+                    final MoveTransition transition = board.currentPlayer().makeMove(move);
                     if (transition.getMoveStatus().isDone()) {
-                        highlightDestinationSquare(selectionRectangle, humanMovedPiece.getPieceAlliance());
+                        highlightDestinationSquare(selectionRectangle, boardPane.pieceToMove.getPieceAlliance());
                     }
                 }
             }
@@ -348,63 +377,44 @@ public class GUI extends Stage {
 
     }
 
-    private class AIThinker implements Runnable {
+//    public void executeComputerMove() {
+//        AIThinker ai = new AIThinker(match.getCurrentEngineDepth());
+//        Thread thread = new Thread(ai);
+//        thread.setPriority(Thread.MAX_PRIORITY);
+//        thread.start();
+//    }
 
-        @Override
-        public void run() {
-            if (chessBoard.currentPlayer().isInCheckMate()) {
-                System.out.println("Human won");
-            }
-            else if (chessBoard.currentPlayer().isInStalemate()) {
-                System.out.println("Draw");
-            }
-            else {
-                MiniMax minimax = new MiniMax(2);
-                Move bestMove = minimax.execute(chessBoard);
-                chessBoard = chessBoard.currentPlayer().makeMove(bestMove).getTransitionBoard();
-                updateBoard();
-                if (chessBoard.currentPlayer().isInCheckMate()) {
-                    System.out.println("Computer won");
-                }
-                else if (chessBoard.currentPlayer().isInStalemate()){
-                    System.out.println("Draw");
-                }
-                lastMove = bestMove;
-            }
-        }
-    }
-
-    private static class MoveLog {
-        private final List<Move> moves;
-
-        MoveLog() {
-            this.moves = new ArrayList<>();
-        }
-
-        public List<Move> getMoves() {
-            return this.moves;
-        }
-
-        public void addMove(final Move move) {
-            this.moves.add(move);
-        }
-
-        public int size() {
-            return this.moves.size();
-        }
-
-        public void clear() {
-            this.moves.clear();
-        }
-
-        public Move removeMove(int index) {
-            return this.moves.remove(index);
-        }
-
-        public boolean removeMove(final Move move) {
-            return this.moves.remove(move);
-        }
-    }
+//    private class AIThinker implements Runnable {
+//
+//        private int searchDepth;
+//
+//        private AIThinker(int depth) {
+//            this.searchDepth = depth;
+//        }
+//
+//        @Override
+//        public void run() {
+//            if (chessBoard.currentPlayer().isInCheckMate()) {
+//                System.out.println("Human won");
+//            }
+//            else if (chessBoard.currentPlayer().isInStalemate()) {
+//                System.out.println("Draw");
+//            }
+//            else {
+//                MiniMax minimax = new MiniMax(searchDepth);
+//                Move bestMove = minimax.execute(chessBoard);
+//                chessBoard = chessBoard.currentPlayer().makeMove(bestMove).getTransitionBoard();
+//                updateBoard();
+//                if (chessBoard.currentPlayer().isInCheckMate()) {
+//                    System.out.println("Computer won");
+//                }
+//                else if (chessBoard.currentPlayer().isInStalemate()){
+//                    System.out.println("Draw");
+//                }
+//                lastMove = bestMove;
+//            }
+//        }
+//    }
 
     public enum BoardDirection {
 

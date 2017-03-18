@@ -100,6 +100,8 @@ public abstract class Move {
         // move the moved piece
         builder.setPiece(this.movedPiece.movePiece(this));
         builder.setMoveMaker(this.board.currentPlayer().getOpponent().getAlliance());
+        builder.setWhitePlayerType(this.board.whitePlayer().getPlayerType());
+        builder.setBlackPlayerType(this.board.blackPlayer().getPlayerType());
         return builder.build();
     }
 
@@ -187,6 +189,8 @@ public abstract class Move {
             // move the moved piece
             builder.setPiece(this.movedPiece.movePiece(this));
             builder.setMoveMaker(this.board.currentPlayer().getOpponent().getAlliance());
+            builder.setWhitePlayerType(this.board.whitePlayer().getPlayerType());
+            builder.setBlackPlayerType(this.board.blackPlayer().getPlayerType());
             return builder.build();
         }
 
@@ -234,11 +238,11 @@ public abstract class Move {
             return this == other || other instanceof PawnAttackMove && super.equals(other);
         }
 
-//        @Override
-//        public String toString() {
-//            return BoardUtils.getPositionAtCoordinate(this.movedPiece.getPiecePosition()).substring(0, 1) + "x" +
-//                   BoardUtils.getPositionAtCoordinate(this.destinationCordinate);
-//        }
+        @Override
+        public String toString() {
+            return BoardUtils.getPositionAtCoordinate(this.movedPiece.getPiecePosition()).substring(0, 1) + "x" +
+                   BoardUtils.getPositionAtCoordinate(this.destinationCoordinate);
+        }
     }
 
     public static final class PawnEnPassantAttackMove extends PawnAttackMove {
@@ -270,6 +274,8 @@ public abstract class Move {
             }
             builder.setPiece(this.movedPiece.movePiece(this));
             builder.setMoveMaker(this.board.currentPlayer().getOpponent().getAlliance());
+            builder.setWhitePlayerType(this.board.whitePlayer().getPlayerType());
+            builder.setBlackPlayerType(this.board.blackPlayer().getPlayerType());
             return builder.build();
         }
     }
@@ -310,6 +316,8 @@ public abstract class Move {
             }
             builder.setPiece(this.promotedPawn.getPromotionPiece().movePiece(this));
             builder.setMoveMaker(pawnMovedBoard.currentPlayer().getAlliance());
+            builder.setWhitePlayerType(this.board.whitePlayer().getPlayerType());
+            builder.setBlackPlayerType(this.board.blackPlayer().getPlayerType());
             return builder.build();
         }
 
@@ -352,6 +360,8 @@ public abstract class Move {
             builder.setPiece(movedPawn);
             builder.setEnPassantPawn(movedPawn);
             builder.setMoveMaker(this.board.currentPlayer().getOpponent().getAlliance());
+            builder.setWhitePlayerType(this.board.whitePlayer().getPlayerType());
+            builder.setBlackPlayerType(this.board.blackPlayer().getPlayerType());
             return builder.build();
         }
     }
@@ -399,6 +409,8 @@ public abstract class Move {
             //TODO
             builder.setPiece(new Rook(this.castleRook.getPieceAlliance(), this.castleRookDestination));
             builder.setMoveMaker(this.board.currentPlayer().getOpponent().getAlliance());
+            builder.setWhitePlayerType(this.board.whitePlayer().getPlayerType());
+            builder.setBlackPlayerType(this.board.blackPlayer().getPlayerType());
             return builder.build();
         }
 
