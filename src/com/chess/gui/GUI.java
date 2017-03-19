@@ -11,6 +11,8 @@ import com.chess.engine.board.Move;
 import com.chess.engine.board.Tile;
 import com.chess.engine.pieces.Piece;
 import com.chess.engine.player.MoveTransition;
+import com.chess.engine.player.Player;
+import com.chess.engine.player.PlayerType;
 import com.chess.engine.player.ai.MiniMax;
 import com.google.common.collect.Lists;
 import javafx.application.Application;
@@ -39,6 +41,9 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontPosture;
+import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
@@ -51,8 +56,9 @@ public class GUI extends Stage {
     private boolean highlightLegalMoves;
     private boolean cheat;
     private BorderPane mainBorderPane = new BorderPane();
-    private GamePane gamePane = new GamePane(Board.createStandardBoard());
-
+    private List<GamePane> gamePanes = new ArrayList<>();
+    private int currentGameIndex = 0;
+//    private SlideShow slideshow;
     private final int TILE_DIMENSION = 60;
     private final int GAME_DIMENSION = 60 * 9;
 
@@ -63,9 +69,10 @@ public class GUI extends Stage {
     }
 
     private void initialize() {
+        gamePanes.add(new GamePane(Board.createStandardBoard(), 1, Difficulty.EASY));
+//        this.slideshow = new SlideShow(gamePanes);
         mainBorderPane.setTop(createMenuBar());
-        mainBorderPane.setCenter(gamePane);
-        mainBorderPane.setMargin(gamePane, new Insets(20,20,20,20));
+        mainBorderPane.setCenter(gamePanes.get(currentGameIndex));
         Scene scene = new Scene(mainBorderPane);
         setScene(scene);
         setTitle("Blindfold Chess Trainer");
@@ -79,25 +86,35 @@ public class GUI extends Stage {
         final Menu preferencesMenu = new Menu("Preferences");
         final Menu helpMenu = new Menu("Help");
 
-        final CheckMenuItem cheatCheckMenuItem = new CheckMenuItem("Cheat");
+        final CheckMenuItem cheatCheckMenuItem = new CheckMenuItem("See Pieces");
         cheatCheckMenuItem.setOnAction(e -> {
-            cheat = cheatCheckMenuItem.isSelected();
-            this.gamePane.boardPane.updateBoard(this.gamePane.boardPane.board);
+            this.cheat = cheatCheckMenuItem.isSelected();
+            for (int i = 0; i < gamePanes.size(); i++) {
+                GamePane tempGamePane = gamePanes.get(i);
+                tempGamePane.boardPane.updateBoard(tempGamePane.boardPane.board);
+            }
         });
 
         final MenuItem flipBoardMenuItem = new MenuItem("Flip Board");
         flipBoardMenuItem.setOnAction(e -> {
-            boardDirection = boardDirection.opposite();
-            this.gamePane.boardPane.updateBoard(this.gamePane.boardPane.board);
+            this.boardDirection = boardDirection.opposite();
+            for (int i = 0; i < gamePanes.size(); i++) {
+                GamePane tempGamePane = gamePanes.get(i);
+                tempGamePane.boardPane.updateBoard(tempGamePane.boardPane.board);
+                tempGamePane.swapSides();
+            }
         });
 
         final CheckMenuItem highlightCheckMenuItem = new CheckMenuItem("Highlight legal moves");
         highlightCheckMenuItem.setOnAction(e -> {
-            highlightLegalMoves = highlightCheckMenuItem.isSelected();
-            this.gamePane.boardPane.updateBoard(this.gamePane.boardPane.board);
+            this.highlightLegalMoves = highlightCheckMenuItem.isSelected();
+            for (int i = 0; i < gamePanes.size(); i++) {
+                GamePane tempGamePane = gamePanes.get(i);
+                tempGamePane.boardPane.updateBoard(tempGamePane.boardPane.board);
+            }
         });
         highlightCheckMenuItem.setSelected(true);
-        highlightLegalMoves = true;
+        this.highlightLegalMoves = true;
         // set highliting to false as default
 
         final MenuItem newGameMenuItem = new MenuItem("New Game/s");
@@ -107,6 +124,15 @@ public class GUI extends Stage {
                 final int numberOfGames = createGame.getNumberOfGames();
                 final ColorChoice colorChoice = createGame.getColorChoice();
                 final Difficulty difficulty = createGame.getDifficulty();
+                gamePanes.clear();
+                for (int i = 1; i < numberOfGames + 1; i++) {
+                    if (colorChoice.getAlliance() == Alliance.WHITE)
+                        gamePanes.add(new GamePane(Board.createStandardGameBoard(PlayerType.HUMAN, PlayerType.COMPUTER), i, difficulty));
+                    else
+                        gamePanes.add(new GamePane(Board.createStandardGameBoard(PlayerType.COMPUTER, PlayerType.HUMAN), i, difficulty));
+                }
+                mainBorderPane.setCenter(gamePanes.get(currentGameIndex));
+                System.out.println("test");
             }
         });
 
@@ -125,9 +151,9 @@ public class GUI extends Stage {
 
         });
 
-        playMenu.getItems().addAll(newGameMenuItem, addGameMenuItem, cheatCheckMenuItem);
+        playMenu.getItems().addAll(newGameMenuItem, addGameMenuItem);
 
-        preferencesMenu.getItems().addAll(flipBoardMenuItem, highlightCheckMenuItem, fullScreenMenuItem, soundCheckMenuItem);
+        preferencesMenu.getItems().addAll(flipBoardMenuItem, highlightCheckMenuItem, fullScreenMenuItem, soundCheckMenuItem, cheatCheckMenuItem);
 
         menuBar.getMenus().addAll(playMenu, preferencesMenu, helpMenu);
 
@@ -140,24 +166,45 @@ public class GUI extends Stage {
         private final BoardPane boardPane;
         private Text whiteMoveText = new Text("1.?");
         private Text blackMoveText = new Text("");
-        private Text gameNumber = new Text("");
+        private final Text gameNumber;
+        private final int boardNumber;
+        private final HBox whiteSide = new HBox(7);
+        private final HBox blackSide = new HBox(7);
+        private final Difficulty difficulty;
 
         public GamePane(Board board) {
             this.boardPane = new BoardPane(board);
+            this.gameNumber = new Text("");
+            this.boardNumber = -1;
+            this.difficulty = Difficulty.EASY;
+            initialize();
+        }
+
+        public GamePane(Board board, final int boardNumber, final Difficulty difficulty) {
+            this.boardPane = new BoardPane(board);
+            this.boardNumber = boardNumber;
+            this.gameNumber = new Text("Board " + boardNumber);
+            this.difficulty = difficulty;
             initialize();
         }
 
         private void initialize() {
-            setTop(blackMoveText);
-            setAlignment(blackMoveText, Pos.BOTTOM_RIGHT);
-            setMargin(blackMoveText, new Insets(2,2,2,2));
-            setBottom(whiteMoveText);
-            setMargin(whiteMoveText, new Insets(2,2,2,2));
-            setPadding(new Insets(15, 15, 15, 15));
+            initWhiteSide();
+            initBlackSide();
+            BorderPane boardAndMovesPane = new BorderPane();
+            boardAndMovesPane.setTop(this.blackSide);
+            boardAndMovesPane.setAlignment(this.blackSide, Pos.BOTTOM_RIGHT);
+            boardAndMovesPane.setBottom(this.whiteSide);
             this.boardPane.setAlignment(Pos.CENTER);
             this.boardBackground.getChildren().add(boardPane);
-            setCenter(boardBackground);
+            boardAndMovesPane.setCenter(boardBackground);
             drawBackground();
+            setTop(this.gameNumber);
+            setCenter(boardAndMovesPane);
+            setPadding(new Insets(0, 20, 10, 20));
+            setAlignment(this.gameNumber, Pos.BOTTOM_CENTER);
+            setAlignment(boardAndMovesPane, Pos.TOP_CENTER);
+            this.gameNumber.setFont(Font.font("Times New Roman", FontWeight.BOLD, 30));
         }
 
         private void drawBackground() {
@@ -176,6 +223,32 @@ public class GUI extends Stage {
             innerShadow.setColor(Color.web("#EBCCAD", 0.6));
 
             boardPane.setEffect(innerShadow);
+        }
+
+        private void initWhiteSide() {
+            Circle circle = new Circle(5, Color.WHITE);
+            circle.setStroke(Color.BLACK);
+            this.whiteMoveText.setLineSpacing(1);
+            this.whiteSide.getChildren().addAll(circle, whiteMoveText);
+            this.whiteSide.setAlignment(Pos.BASELINE_LEFT);
+        }
+
+        private void initBlackSide() {
+            Circle circle = new Circle(5, Color.BLACK);
+            circle.setStroke(Color.BLACK);
+            this.blackMoveText.setLineSpacing(1);
+            this.blackSide.getChildren().addAll(blackMoveText, circle);
+            this.blackSide.setAlignment(Pos.BASELINE_RIGHT);
+        }
+
+        public void swapSides() {
+            Stack<Node> tempStack = new Stack();
+            tempStack.push(blackSide.getChildren().get(0));
+            tempStack.push(blackSide.getChildren().get(1));
+            blackSide.getChildren().clear();
+            blackSide.getChildren().addAll(whiteSide.getChildren().remove(1), whiteSide.getChildren().remove(0));
+            whiteSide.getChildren().clear();
+            whiteSide.getChildren().addAll(tempStack.pop(), tempStack.pop());
         }
 
 
@@ -204,44 +277,102 @@ public class GUI extends Stage {
                         tileIndex++;
                     }
                 }
+                updateBoard(this.board);
             }
 
             public void updateBoard(Board board) {
-                this.board = board;
-                isGameOver(board);
-                getChildren().clear();
-                int index = 0;
-                for (int i = 0; i < BoardUtils.NUM_TILES_PER_ROW; i++) {
-                    for (int j = 0; j < BoardUtils.NUM_TILES_PER_ROW; j++) {
-                        boardDirection.traverse(boardTiles).get(index).drawTile(board);
-                        add(boardDirection.traverse(boardTiles).get(index), j, i);
-                        index++;
+                Platform.runLater(() -> {
+                    this.board = board;
+                    updateMovesText(board);
+                    isGameOver(board);
+                    getChildren().clear();
+                    int index = 0;
+                    for (int i = 0; i < BoardUtils.NUM_TILES_PER_ROW; i++) {
+                        for (int j = 0; j < BoardUtils.NUM_TILES_PER_ROW; j++) {
+                            boardDirection.traverse(boardTiles).get(index).drawTile(board);
+                            add(boardDirection.traverse(boardTiles).get(index), j, i);
+                            index++;
+                        }
                     }
-                }
-                updateMovesText();
+                    if (!board.currentPlayer().getPlayerType().isHuman()) {
+//                        slideshow.showNext();
+                        executeComputerMove(board, difficulty.getDepth());
+                    }
+                });
             }
 
-            private void updateMovesText() {
+            public void executeComputerMove(final Board board, final int depth) {
+                AIThinker ai = new AIThinker(board, depth);
+                Thread thread = new Thread(ai);
+                thread.setPriority(Thread.MAX_PRIORITY);
+                thread.start();
+            }
+
+            private class AIThinker implements Runnable {
+
+                private final Board board;
+                private final int searchDepth;
+
+                private AIThinker(Board board, int depth) {
+                    this.board = board;
+                    this.searchDepth = depth;
+                }
+
+                @Override
+                public void run() {
+                    if (!gameOver) {
+                        MiniMax minimax = new MiniMax(this.board, this.searchDepth);
+                        Move bestMove = minimax.compute();
+                        updateBoard(board.currentPlayer().makeMove(bestMove).getTransitionBoard());
+                        moves.push(bestMove);
+                    }
+                }
+            }
+
+            private void updateMovesText(final Board board) {
                 if (!this.moves.isEmpty()) {
+                    String lastMoveToString = checkOrCheckMate(board, moves.peek());
                     if (this.moves.size() % 2 == 0) {
-                        blackMoveText.setText(this.moves.size() / 2 + "..." + moves.peek());
+                        blackMoveText.setText(this.moves.size() / 2 + "..." + lastMoveToString);
                         whiteMoveText.setText(this.moves.size() / 2 + 1 + ".?");
                     }
                     else {
                         blackMoveText.setText((this.moves.size() + 1) / 2 + "...?");
-                        whiteMoveText.setText((this.moves.size() + 1) / 2 + "." + moves.peek());
+                        whiteMoveText.setText((this.moves.size() + 1) / 2 + "." + lastMoveToString);
                     }
                 }
+            }
+
+            private String checkOrCheckMate(final Board board, final Move move) {
+                if (board.currentPlayer().isInCheckMate())
+                    return move + "#";
+                if (board.currentPlayer().isInCheck())
+                    return move + "+";
+                return move.toString();
             }
 
             private void isGameOver(final Board board) {
                 if (board.currentPlayer().isInCheckMate()) {
                     gameOver = true;
-                    //TODO
+                    updateResultAsLoss(board.currentPlayer());
                 } else if (board.currentPlayer().isInStalemate()) {
                     gameOver = true;
                     //TODO
                 }
+            }
+
+            private void updateResultAsLoss(final Player playerThatLost) {
+                if (playerThatLost.getAlliance().isWhite())
+                    whiteMoveText.setText("0-1");
+                else
+                    blackMoveText.setText("1-0");
+            }
+
+            private void updateResultAsDraw(final Player playerToMove) {
+                if (playerToMove.getAlliance().isWhite())
+                    whiteMoveText.setText("1/2-1/2");
+                else
+                    blackMoveText.setText("1/2-1/2");
             }
 
             private void setPieceToMove(Piece pieceToMove) {
@@ -331,7 +462,7 @@ public class GUI extends Stage {
                         if (lastMove.getCurrentCoordinate() == tileID) {
                             highlightSourceSquare(selectionRectangle, lastMove.getMovedPiece().getPieceAlliance());
                         } else if (lastMove.getDestinationCoordinate() == tileID) {
-                            highlightDestinationSquare(selectionRectangle, lastMove.getMovedPiece().getPieceAlliance());
+                            highlightMoveDestinationSquare(selectionRectangle, lastMove.getMovedPiece().getPieceAlliance());
                         }
                     }
                 }
@@ -375,11 +506,19 @@ public class GUI extends Stage {
                 }
             }
 
-            private void highlightDestinationSquare(final Rectangle selectionRectangle, final Alliance alliance) {
+            private void highlightMoveDestinationSquare(final Rectangle selectionRectangle, final Alliance alliance) {
                 if (alliance.isWhite()) {
                     selectionRectangle.setFill(Color.web("#859C27", 0.9));
                 } else {
                     selectionRectangle.setFill(Color.web("#CD0000", 0.9));
+                }
+            }
+
+            private void highlightDestinationSquare(final Rectangle selectionRectangle, final Alliance alliance) {
+                if (alliance.isWhite()) {
+                    selectionRectangle.setFill(Color.web("#859C27", 0.65));
+                } else {
+                    selectionRectangle.setFill(Color.web("#CD0000", 0.65));
                 }
             }
 
@@ -397,45 +536,4 @@ public class GUI extends Stage {
 
         }
     }
-
-
-//    public void executeComputerMove() {
-//        AIThinker ai = new AIThinker(match.getCurrentEngineDepth());
-//        Thread thread = new Thread(ai);
-//        thread.setPriority(Thread.MAX_PRIORITY);
-//        thread.start();
-//    }
-
-//    private class AIThinker implements Runnable {
-//
-//        private int searchDepth;
-//
-//        private AIThinker(int depth) {
-//            this.searchDepth = depth;
-//        }
-//
-//        @Override
-//        public void run() {
-//            if (chessBoard.currentPlayer().isInCheckMate()) {
-//                System.out.println("Human won");
-//            }
-//            else if (chessBoard.currentPlayer().isInStalemate()) {
-//                System.out.println("Draw");
-//            }
-//            else {
-//                MiniMax minimax = new MiniMax(searchDepth);
-//                Move bestMove = minimax.execute(chessBoard);
-//                chessBoard = chessBoard.currentPlayer().makeMove(bestMove).getTransitionBoard();
-//                updateBoard();
-//                if (chessBoard.currentPlayer().isInCheckMate()) {
-//                    System.out.println("Computer won");
-//                }
-//                else if (chessBoard.currentPlayer().isInStalemate()){
-//                    System.out.println("Draw");
-//                }
-//                lastMove = bestMove;
-//            }
-//        }
-//    }
-
 }

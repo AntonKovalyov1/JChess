@@ -4,16 +4,20 @@ import com.chess.engine.board.Board;
 import com.chess.engine.board.Move;
 import com.chess.engine.player.MoveTransition;
 
+import java.util.concurrent.RecursiveTask;
+
 /**
  * Created by Anton on 3/13/2017.
  */
-public class MiniMax implements MoveStrategy {
+public class MiniMax extends RecursiveTask implements MoveStrategy {
 
     private final BoardEvaluator boardEvaluator;
     private final int searchDepth;
+    private final Board board;
 
-    public MiniMax(final int searchDepth) {
+    public MiniMax(final Board board, final int searchDepth) {
         this.boardEvaluator = new StandardBoardEvaluator();
+        this.board = board;
         this.searchDepth = searchDepth;
     }
 
@@ -22,6 +26,10 @@ public class MiniMax implements MoveStrategy {
         return "MiniMax";
     }
 
+    @Override
+    public Move compute() {
+        return execute(this.board);
+    }
     @Override
     public Move execute(Board board) {
 

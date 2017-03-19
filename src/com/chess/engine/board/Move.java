@@ -364,6 +364,11 @@ public abstract class Move {
             builder.setBlackPlayerType(this.board.blackPlayer().getPlayerType());
             return builder.build();
         }
+
+        @Override
+        public String toString() {
+            return BoardUtils.getPositionAtCoordinate(this.destinationCoordinate);
+        }
     }
 
     public static abstract class CastleMove extends Move {
