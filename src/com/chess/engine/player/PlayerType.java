@@ -11,6 +11,11 @@ public enum PlayerType {
         }
 
         @Override
+        public boolean isComputer() {
+            return false;
+        }
+
+        @Override
         public PlayerType opposite() {
             return PlayerType.COMPUTER;
         }
@@ -22,11 +27,17 @@ public enum PlayerType {
         }
 
         @Override
+        public boolean isComputer() {
+            return true;
+        }
+
+        @Override
         public PlayerType opposite() {
             return PlayerType.HUMAN;
         }
     };
 
     public abstract boolean isHuman();
+    public abstract boolean isComputer();
     public abstract PlayerType opposite();
 }

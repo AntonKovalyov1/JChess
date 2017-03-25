@@ -15,6 +15,8 @@ import com.chess.engine.player.Player;
 import com.chess.engine.player.PlayerType;
 import com.chess.engine.player.ai.MiniMax;
 import com.google.common.collect.Lists;
+import com.sun.javafx.tk.Toolkit;
+import javafx.animation.*;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.InvalidationListener;
@@ -47,36 +49,76 @@ import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
+import javafx.util.Callback;
+import javafx.util.Duration;
 
+import java.lang.reflect.Array;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class GUI extends Stage {
 
-    private BoardDirection boardDirection;
     private boolean highlightLegalMoves;
     private boolean cheat;
+    private boolean flipBoard;
+    private Pagination pagination;
     private BorderPane mainBorderPane = new BorderPane();
-    private List<GamePane> gamePanes = new ArrayList<>();
+    private LinkedList<GamePane> gamePanes = new LinkedList<>();
     private int currentGameIndex = 0;
-//    private SlideShow slideshow;
+    private VBox gameSlideshow;
     private final int TILE_DIMENSION = 60;
-    private final int GAME_DIMENSION = 60 * 9;
+    private ScheduledExecutorService computerMoveExecutor = Executors.newScheduledThreadPool(1);
+    private SequentialTransition st = new SequentialTransition();
 
     public GUI() {
-        this.highlightLegalMoves = false;
-        this.boardDirection = BoardDirection.NORMAL;
+        this.highlightLegalMoves = true;
         initialize();
     }
 
     private void initialize() {
-        gamePanes.add(new GamePane(Board.createStandardBoard(), 1, Difficulty.EASY));
-//        this.slideshow = new SlideShow(gamePanes);
+        gamePanes.add(new GamePane(Board.createStandardGameBoard(PlayerType.HUMAN, PlayerType.HUMAN), Difficulty.EASY.getDepth()));
+        gameSlideshow = createPaginationControl(gamePanes);
         mainBorderPane.setTop(createMenuBar());
-        mainBorderPane.setCenter(gamePanes.get(currentGameIndex));
+        mainBorderPane.setCenter(gameSlideshow);
         Scene scene = new Scene(mainBorderPane);
+        scene.getStylesheets().add("main.css");
         setScene(scene);
         setTitle("Blindfold Chess Trainer");
         show();
+        setOnCloseRequest(e -> {
+            computerMoveExecutor.shutdownNow();
+            close();
+        });
+    }
+
+    public VBox createPaginationControl(LinkedList<GamePane> gamePanes) {
+        VBox vb = new VBox();
+        pagination = new Pagination(gamePanes.size());
+        pagination.currentPageIndexProperty().addListener((InvalidationListener) -> {
+            pagination.setDisable(true);
+            st.getChildren().clear();
+            int current = pagination.getCurrentPageIndex();
+            GamePane newGame = gamePanes.get(current);
+            PauseTransition pt = new PauseTransition(Duration.millis(400));
+            FadeTransition ft = new FadeTransition(Duration.millis(1000), vb.getChildren().get(1));
+            ft.setFromValue(1.0);
+            ft.setToValue(0.0);
+            ft.setOnFinished(e -> {
+                vb.getChildren().set(1, newGame);
+                newGame.setOpacity(0.0);
+            });
+            PauseTransition pt2 = new PauseTransition(Duration.millis(100));
+            FadeTransition ft2 = new FadeTransition(Duration.millis(1200), gamePanes.get(current));
+            ft2.setFromValue(0.0);
+            ft2.setToValue(1.0);
+            st.getChildren().addAll(pt, ft, pt2, ft2);
+            st.play();
+            st.setOnFinished(e -> {
+                pagination.setDisable(false);
+            });
+        });
+        vb.getChildren().addAll(pagination, gamePanes.getFirst());
+        return vb;
     }
 
     private MenuBar createMenuBar() {
@@ -90,18 +132,15 @@ public class GUI extends Stage {
         cheatCheckMenuItem.setOnAction(e -> {
             this.cheat = cheatCheckMenuItem.isSelected();
             for (int i = 0; i < gamePanes.size(); i++) {
-                GamePane tempGamePane = gamePanes.get(i);
-                tempGamePane.boardPane.updateBoard(tempGamePane.boardPane.board);
+                gamePanes.get(i).boardPane.redrawBoard();
             }
         });
 
-        final MenuItem flipBoardMenuItem = new MenuItem("Flip Board");
+        final CheckMenuItem flipBoardMenuItem = new CheckMenuItem("Flip Board/s");
         flipBoardMenuItem.setOnAction(e -> {
-            this.boardDirection = boardDirection.opposite();
+            flipBoard = !flipBoard;
             for (int i = 0; i < gamePanes.size(); i++) {
-                GamePane tempGamePane = gamePanes.get(i);
-                tempGamePane.boardPane.updateBoard(tempGamePane.boardPane.board);
-                tempGamePane.swapSides();
+                gamePanes.get(i).flipBoard();
             }
         });
 
@@ -109,8 +148,7 @@ public class GUI extends Stage {
         highlightCheckMenuItem.setOnAction(e -> {
             this.highlightLegalMoves = highlightCheckMenuItem.isSelected();
             for (int i = 0; i < gamePanes.size(); i++) {
-                GamePane tempGamePane = gamePanes.get(i);
-                tempGamePane.boardPane.updateBoard(tempGamePane.boardPane.board);
+                gamePanes.get(i).boardPane.redrawBoard();
             }
         });
         highlightCheckMenuItem.setSelected(true);
@@ -121,18 +159,20 @@ public class GUI extends Stage {
         newGameMenuItem.setOnAction(e -> {
             CreateGame createGame = new CreateGame();
             if (createGame.getNumberOfGames() != -1) {
+                computerMoveExecutor.shutdownNow();
+                computerMoveExecutor = Executors.newScheduledThreadPool(1);
                 final int numberOfGames = createGame.getNumberOfGames();
                 final ColorChoice colorChoice = createGame.getColorChoice();
                 final Difficulty difficulty = createGame.getDifficulty();
                 gamePanes.clear();
                 for (int i = 1; i < numberOfGames + 1; i++) {
                     if (colorChoice.getAlliance() == Alliance.WHITE)
-                        gamePanes.add(new GamePane(Board.createStandardGameBoard(PlayerType.HUMAN, PlayerType.COMPUTER), i, difficulty));
+                        gamePanes.add(new GamePane(Board.createStandardGameBoard(PlayerType.HUMAN, PlayerType.COMPUTER), difficulty.getDepth()));
                     else
-                        gamePanes.add(new GamePane(Board.createStandardGameBoard(PlayerType.COMPUTER, PlayerType.HUMAN), i, difficulty));
+                        gamePanes.add(new GamePane(Board.createStandardGameBoard(PlayerType.COMPUTER, PlayerType.HUMAN), difficulty.getDepth()));
                 }
-                mainBorderPane.setCenter(gamePanes.get(currentGameIndex));
-                System.out.println("test");
+                gameSlideshow = createPaginationControl(gamePanes);
+                mainBorderPane.setCenter(gameSlideshow);
             }
         });
 
@@ -166,25 +206,13 @@ public class GUI extends Stage {
         private final BoardPane boardPane;
         private Text whiteMoveText = new Text("1.?");
         private Text blackMoveText = new Text("");
-        private final Text gameNumber;
-        private final int boardNumber;
         private final HBox whiteSide = new HBox(7);
         private final HBox blackSide = new HBox(7);
-        private final Difficulty difficulty;
+        private final int depth;
 
-        public GamePane(Board board) {
+        public GamePane(Board board, final int depth) {
             this.boardPane = new BoardPane(board);
-            this.gameNumber = new Text("");
-            this.boardNumber = -1;
-            this.difficulty = Difficulty.EASY;
-            initialize();
-        }
-
-        public GamePane(Board board, final int boardNumber, final Difficulty difficulty) {
-            this.boardPane = new BoardPane(board);
-            this.boardNumber = boardNumber;
-            this.gameNumber = new Text("Board " + boardNumber);
-            this.difficulty = difficulty;
+            this.depth = depth;
             initialize();
         }
 
@@ -199,12 +227,10 @@ public class GUI extends Stage {
             this.boardBackground.getChildren().add(boardPane);
             boardAndMovesPane.setCenter(boardBackground);
             drawBackground();
-            setTop(this.gameNumber);
             setCenter(boardAndMovesPane);
-            setPadding(new Insets(0, 20, 10, 20));
-            setAlignment(this.gameNumber, Pos.BOTTOM_CENTER);
+            setPadding(new Insets(0, 20, 20, 20));
             setAlignment(boardAndMovesPane, Pos.TOP_CENTER);
-            this.gameNumber.setFont(Font.font("Times New Roman", FontWeight.BOLD, 30));
+            flipBoard();
         }
 
         private void drawBackground() {
@@ -223,6 +249,14 @@ public class GUI extends Stage {
             innerShadow.setColor(Color.web("#EBCCAD", 0.6));
 
             boardPane.setEffect(innerShadow);
+        }
+
+        private synchronized void flipBoard() {
+           Platform.runLater(() -> {
+               Collections.reverse(this.boardPane.boardTiles);
+               swapSides();
+               this.boardPane.redrawBoard();
+           });
         }
 
         private void initWhiteSide() {
@@ -251,12 +285,11 @@ public class GUI extends Stage {
             whiteSide.getChildren().addAll(tempStack.pop(), tempStack.pop());
         }
 
-
         public final class BoardPane extends GridPane {
 
             private final List<TilePane> boardTiles = new ArrayList<>();
             private final Stack<Move> moves = new Stack<>();
-            private Board board;
+            protected Board board;
             private Piece pieceToMove;
             private Tile sourceTile;
             private Tile destinationTile;
@@ -281,31 +314,46 @@ public class GUI extends Stage {
             }
 
             public void updateBoard(Board board) {
-                Platform.runLater(() -> {
-                    this.board = board;
-                    updateMovesText(board);
-                    isGameOver(board);
-                    getChildren().clear();
-                    int index = 0;
-                    for (int i = 0; i < BoardUtils.NUM_TILES_PER_ROW; i++) {
-                        for (int j = 0; j < BoardUtils.NUM_TILES_PER_ROW; j++) {
-                            boardDirection.traverse(boardTiles).get(index).drawTile(board);
-                            add(boardDirection.traverse(boardTiles).get(index), j, i);
-                            index++;
+                this.board = board;
+                Platform.runLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        updateMovesText(board);
+                        isGameOver(board);
+                        redrawBoard();
+                        if (board.currentPlayer().getPlayerType().isComputer()) {
+                            if (!moves.isEmpty()) {
+                                updatePage();
+                                computerMoveExecutor.schedule(new AIThinker(board, depth),
+                                        1500,
+                                        TimeUnit.MILLISECONDS);
+                            }
+                            else
+                                computerMoveExecutor.schedule(new AIThinker(board, depth),
+                                                         500,
+                                                              TimeUnit.MILLISECONDS);
                         }
-                    }
-                    if (!board.currentPlayer().getPlayerType().isHuman()) {
-//                        slideshow.showNext();
-                        executeComputerMove(board, difficulty.getDepth());
                     }
                 });
             }
 
-            public void executeComputerMove(final Board board, final int depth) {
-                AIThinker ai = new AIThinker(board, depth);
-                Thread thread = new Thread(ai);
-                thread.setPriority(Thread.MAX_PRIORITY);
-                thread.start();
+            public synchronized void redrawBoard() {
+                getChildren().clear();
+                int index = 0;
+                for (int i = 0; i < BoardUtils.NUM_TILES_PER_ROW; i++) {
+                    for (int j = 0; j < BoardUtils.NUM_TILES_PER_ROW; j++) {
+                        this.boardTiles.get(index).drawTile(board);
+                        add(this.boardTiles.get(index), j, i);
+                        index++;
+                    }
+                }
+            }
+
+            public void updatePage() {
+                if (pagination.getCurrentPageIndex() == gamePanes.size() - 1)
+                    pagination.setCurrentPageIndex(0);
+                else
+                    pagination.setCurrentPageIndex(pagination.getCurrentPageIndex() + 1);
             }
 
             private class AIThinker implements Runnable {
@@ -323,8 +371,8 @@ public class GUI extends Stage {
                     if (!gameOver) {
                         MiniMax minimax = new MiniMax(this.board, this.searchDepth);
                         Move bestMove = minimax.compute();
-                        updateBoard(board.currentPlayer().makeMove(bestMove).getTransitionBoard());
                         moves.push(bestMove);
+                        boardPane.updateBoard(board.currentPlayer().makeMove(bestMove).getTransitionBoard());
                     }
                 }
             }
@@ -402,7 +450,7 @@ public class GUI extends Stage {
 
                 setOnMouseClicked(e -> {
                     Board chessBoard = boardPane.board;
-                    if (!boardPane.gameOver && chessBoard.currentPlayer().getPlayerType().isHuman()) {
+                    if (!boardPane.gameOver && chessBoard.currentPlayer().getPlayerType().isHuman() && st.getStatus() != Animation.Status.RUNNING) {
                         if (e.getButton() == MouseButton.PRIMARY) {
                             if (boardPane.sourceTile == null) {
                                 // first click
@@ -412,7 +460,8 @@ public class GUI extends Stage {
                                         boardPane.pieceToMove.getPieceAlliance() != chessBoard.currentPlayer().getAlliance()) {
                                     boardPane.setSourceTile(null);
                                 }
-                            } else {
+                            }
+                            else {
                                 // second click
                                 boardPane.setDestinationTile(chessBoard.getTile(tileID));
                                 final Move move = Move.MoveFactory.createMove(chessBoard,
@@ -426,7 +475,8 @@ public class GUI extends Stage {
                                 resetMoveSelection();
                             }
 
-                        } else if (e.getButton() == MouseButton.SECONDARY) {
+                        }
+                        else if (e.getButton() == MouseButton.SECONDARY) {
                             resetMoveSelection();
                         }
                         this.boardPane.updateBoard(chessBoard);

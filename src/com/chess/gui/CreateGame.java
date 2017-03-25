@@ -65,15 +65,17 @@ public class CreateGame extends Stage {
         playButton.setOnAction(e -> {
             try {
                 numberOfGames = Integer.parseInt(numberOfGamesField.getText());
-                if (getNumberOfGames() < 1 || getNumberOfGames() > 999) {
+                if (getNumberOfGames() < 1 || getNumberOfGames() > 100) {
                     throw new Exception();
                 }
                 else {
+                    colorChoice = (ColorChoice) colorComboBox.getValue();
+                    difficulty = (Difficulty) difficultyComboBox.getValue();
                     close();
                 }
             }
             catch (Exception ex) {
-                errorText.setText("Please enter a number from 1 to 999");
+                errorText.setText("Please enter a number from 1 to 100");
                 numberOfGamesLabel.setTextFill(Color.RED);
                 numberOfGames = -1;
             }
@@ -81,6 +83,11 @@ public class CreateGame extends Stage {
 
         final Button cancelButton = new Button("Cancel");
         cancelButton.setOnAction(e -> {
+            numberOfGames = -1;
+            close();
+        });
+
+        setOnCloseRequest(e -> {
             numberOfGames = -1;
             close();
         });
