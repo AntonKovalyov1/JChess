@@ -14,45 +14,25 @@ import com.chess.engine.player.MoveTransition;
 import com.chess.engine.player.Player;
 import com.chess.engine.player.PlayerType;
 import com.chess.engine.player.ai.MiniMax;
-import com.google.common.collect.Lists;
-import com.sun.javafx.tk.Toolkit;
 import javafx.animation.*;
-import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.beans.InvalidationListener;
-import javafx.beans.property.DoubleProperty;
-import javafx.beans.property.SimpleDoubleProperty;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.effect.BlurType;
-import javafx.scene.effect.DropShadow;
 import javafx.scene.effect.InnerShadow;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseButton;
-import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontPosture;
-import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
-import javafx.stage.StageStyle;
-import javafx.util.Callback;
 import javafx.util.Duration;
 
-import java.lang.reflect.Array;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -61,14 +41,11 @@ public class GUI extends Stage {
     private boolean highlightLegalMoves;
     private boolean cheat;
     private boolean flipBoard;
-    private Pagination pagination;
     private BorderPane mainBorderPane = new BorderPane();
     private LinkedList<GamePane> gamePanes = new LinkedList<>();
-    private int currentGameIndex = 0;
-    private VBox gameSlideshow;
+    private GamesViewer gamesViewer;
     private final int TILE_DIMENSION = 60;
     private ScheduledExecutorService computerMoveExecutor = Executors.newScheduledThreadPool(1);
-    private SequentialTransition st = new SequentialTransition();
 
     public GUI() {
         this.highlightLegalMoves = true;
@@ -77,9 +54,9 @@ public class GUI extends Stage {
 
     private void initialize() {
         gamePanes.add(new GamePane(Board.createStandardGameBoard(PlayerType.HUMAN, PlayerType.HUMAN), Difficulty.EASY.getDepth()));
-        gameSlideshow = createPaginationControl(gamePanes);
+        gamesViewer = new GamesViewer(gamePanes);
         mainBorderPane.setTop(createMenuBar());
-        mainBorderPane.setCenter(gameSlideshow);
+        mainBorderPane.setCenter(gamesViewer);
         Scene scene = new Scene(mainBorderPane);
         scene.getStylesheets().add("main.css");
         setScene(scene);
@@ -91,36 +68,6 @@ public class GUI extends Stage {
         });
     }
 
-    public VBox createPaginationControl(LinkedList<GamePane> gamePanes) {
-        VBox vb = new VBox();
-        pagination = new Pagination(gamePanes.size());
-        pagination.currentPageIndexProperty().addListener((InvalidationListener) -> {
-            pagination.setDisable(true);
-            st.getChildren().clear();
-            int current = pagination.getCurrentPageIndex();
-            GamePane newGame = gamePanes.get(current);
-            PauseTransition pt = new PauseTransition(Duration.millis(400));
-            FadeTransition ft = new FadeTransition(Duration.millis(1000), vb.getChildren().get(1));
-            ft.setFromValue(1.0);
-            ft.setToValue(0.0);
-            ft.setOnFinished(e -> {
-                vb.getChildren().set(1, newGame);
-                newGame.setOpacity(0.0);
-            });
-            PauseTransition pt2 = new PauseTransition(Duration.millis(100));
-            FadeTransition ft2 = new FadeTransition(Duration.millis(1200), gamePanes.get(current));
-            ft2.setFromValue(0.0);
-            ft2.setToValue(1.0);
-            st.getChildren().addAll(pt, ft, pt2, ft2);
-            st.play();
-            st.setOnFinished(e -> {
-                pagination.setDisable(false);
-            });
-        });
-        vb.getChildren().addAll(pagination, gamePanes.getFirst());
-        return vb;
-    }
-
     private MenuBar createMenuBar() {
         final MenuBar menuBar = new MenuBar();
 
@@ -130,9 +77,9 @@ public class GUI extends Stage {
 
         final CheckMenuItem cheatCheckMenuItem = new CheckMenuItem("See Pieces");
         cheatCheckMenuItem.setOnAction(e -> {
-            this.cheat = cheatCheckMenuItem.isSelected();
+            cheat = cheatCheckMenuItem.isSelected();
             for (int i = 0; i < gamePanes.size(); i++) {
-                gamePanes.get(i).boardPane.redrawBoard();
+                gamePanes.get(i).getBoardPane().redrawBoard();
             }
         });
 
@@ -148,7 +95,7 @@ public class GUI extends Stage {
         highlightCheckMenuItem.setOnAction(e -> {
             this.highlightLegalMoves = highlightCheckMenuItem.isSelected();
             for (int i = 0; i < gamePanes.size(); i++) {
-                gamePanes.get(i).boardPane.redrawBoard();
+                gamePanes.get(i).getBoardPane().redrawBoard();
             }
         });
         highlightCheckMenuItem.setSelected(true);
@@ -171,8 +118,8 @@ public class GUI extends Stage {
                     else
                         gamePanes.add(new GamePane(Board.createStandardGameBoard(PlayerType.COMPUTER, PlayerType.HUMAN), difficulty.getDepth()));
                 }
-                gameSlideshow = createPaginationControl(gamePanes);
-                mainBorderPane.setCenter(gameSlideshow);
+                gamesViewer = new GamesViewer(gamePanes);
+                mainBorderPane.setCenter(gamesViewer);
             }
         });
 
@@ -200,6 +147,125 @@ public class GUI extends Stage {
         return menuBar;
     }
 
+    public final class GamesViewer extends GridPane {
+
+        private final List<GamePane> games;
+        private Pagination pagination;
+        private Button btResign = resignButton();
+        private Button btDraw = drawButton();
+        private Button btWin = winButton();
+        private Button btCheat = cheatButton();
+        private Button btFlip = flipButton();
+        private Button btTakeBack = takeBackButton();
+        private Button btResetGame = resetButton();
+        private VBox options = createOptions();
+        private SequentialTransition st = new SequentialTransition();
+
+        public GamesViewer(List<GamePane> games) {
+            this.games = games;
+            this.pagination = createPaginationControl(games);
+            initialize(games.get(0));
+        }
+
+        public void initialize(GamePane game) {
+            getChildren().clear();
+            add(getPagination(), 0, 0);
+            add(game, 0, 1);
+            add(options, 1, 1);
+        }
+
+        public VBox createOptions() {
+            VBox options = new VBox(5);
+            options.setPadding(new Insets(20,20,0,5));
+            options.getChildren().addAll(btResign, btDraw, btWin, btCheat, btFlip, btTakeBack, btResetGame);
+            return options;
+        }
+
+        public Pagination createPaginationControl(List<GamePane> gamePanes) {
+            Pagination p = new Pagination(gamePanes.size());
+            p.currentPageIndexProperty().addListener((InvalidationListener) -> {
+                GamePane current = getGames().get(getPagination().getCurrentPageIndex());
+                p.setDisable(true);
+                getSt().getChildren().clear();
+                PauseTransition pt = new PauseTransition(Duration.millis(100));
+                FadeTransition ft = new FadeTransition(Duration.millis(800), getChildren().get(1));
+                ft.setFromValue(1.0);
+                ft.setToValue(0.0);
+                ft.setOnFinished(e -> {
+                    current.setOpacity(0.0);
+                    initialize(current);
+                });
+                PauseTransition pt2 = new PauseTransition(Duration.millis(100));
+                FadeTransition ft2 = new FadeTransition(Duration.millis(800), current);
+                ft2.setFromValue(0.0);
+                ft2.setToValue(1.0);
+                getSt().getChildren().addAll(pt, ft, pt2, ft2);
+                getSt().play();
+                getSt().setOnFinished(e -> {
+                    getPagination().setDisable(false);
+                });
+            });
+            return p;
+        }
+
+        private Button resignButton() {
+            Button b = new Button("Resign");
+            b.setPrefWidth(100);
+            return b;
+        }
+
+        private Button drawButton() {
+            Button b = new Button("Draw");
+            b.setPrefWidth(100);
+            return b;
+        }
+
+        private Button winButton() {
+            Button b = new Button("Claim Win");
+            b.setPrefWidth(100);
+            return b;
+        }
+
+        private Button cheatButton() {
+            Button b = new Button("Cheat");
+            b.setPrefWidth(100);
+            b.setOnAction(e -> {
+
+            });
+            return b;
+        }
+
+        private Button flipButton() {
+            Button b = new Button("Flip");
+            b.setPrefWidth(100);
+            return b;
+        }
+
+        private Button takeBackButton() {
+            Button b = new Button("Take Back");
+            b.setPrefWidth(100);
+            return b;
+        }
+
+        private Button resetButton() {
+            Button b = new Button("Reset");
+            b.setPrefWidth(100);
+            return b;
+        }
+
+        public List<GamePane> getGames() {
+            return games;
+        }
+
+        public Pagination getPagination() {
+            return pagination;
+        }
+
+        public SequentialTransition getSt() {
+            return st;
+        }
+    }
+
     public final class GamePane extends BorderPane {
 
         private final StackPane boardBackground = new StackPane();
@@ -213,30 +279,34 @@ public class GUI extends Stage {
         public GamePane(Board board, final int depth) {
             this.boardPane = new BoardPane(board);
             this.depth = depth;
-            initialize();
+            initialize(board);
         }
 
-        private void initialize() {
+        private void initialize(Board board) {
             initWhiteSide();
             initBlackSide();
             BorderPane boardAndMovesPane = new BorderPane();
-            boardAndMovesPane.setTop(this.blackSide);
-            boardAndMovesPane.setAlignment(this.blackSide, Pos.BOTTOM_RIGHT);
-            boardAndMovesPane.setBottom(this.whiteSide);
-            this.boardPane.setAlignment(Pos.CENTER);
-            this.boardBackground.getChildren().add(boardPane);
-            boardAndMovesPane.setCenter(boardBackground);
+            if (board.whitePlayer().getPlayerType().isComputer())
+                flipBoard();
+            if (flipBoard) {
+                flipBoard();
+            }
+            boardAndMovesPane.setTop(this.getBlackSide());
+            boardAndMovesPane.setAlignment(this.getBlackSide(), Pos.BOTTOM_RIGHT);
+            boardAndMovesPane.setBottom(this.getWhiteSide());
+            this.getBoardPane().setAlignment(Pos.CENTER);
+            this.getBoardBackground().getChildren().add(getBoardPane());
+            boardAndMovesPane.setCenter(getBoardBackground());
             drawBackground();
             setCenter(boardAndMovesPane);
-            setPadding(new Insets(0, 20, 20, 20));
+            setPadding(new Insets(0, 0, 20, 20));
             setAlignment(boardAndMovesPane, Pos.TOP_CENTER);
-            flipBoard();
         }
 
         private void drawBackground() {
-            boardBackground.setPadding(new Insets(15, 15, 15, 15));
-            boardBackground.setAlignment(Pos.CENTER);
-            boardBackground.setStyle("-fx-background-image: url('images/boardbackground.jpg'); " +
+            getBoardBackground().setPadding(new Insets(15, 15, 15, 15));
+            getBoardBackground().setAlignment(Pos.CENTER);
+            getBoardBackground().setStyle("-fx-background-image: url('images/boardbackground.jpg'); " +
                     "-fx-background-repeat: no-repeat; " +
                     "-fx-background-size: cover");
             setBoardInsideBackgroundEffect();
@@ -248,41 +318,67 @@ public class GUI extends Stage {
             innerShadow.setOffsetY(-1);
             innerShadow.setColor(Color.web("#EBCCAD", 0.6));
 
-            boardPane.setEffect(innerShadow);
+            getBoardPane().setEffect(innerShadow);
         }
 
-        private synchronized void flipBoard() {
-           Platform.runLater(() -> {
-               Collections.reverse(this.boardPane.boardTiles);
+        private void flipBoard() {
+               Collections.reverse(this.getBoardPane().boardTiles);
                swapSides();
-               this.boardPane.redrawBoard();
-           });
+               this.getBoardPane().redrawBoard();
         }
 
         private void initWhiteSide() {
             Circle circle = new Circle(5, Color.WHITE);
             circle.setStroke(Color.BLACK);
-            this.whiteMoveText.setLineSpacing(1);
-            this.whiteSide.getChildren().addAll(circle, whiteMoveText);
-            this.whiteSide.setAlignment(Pos.BASELINE_LEFT);
+            this.getWhiteMoveText().setLineSpacing(1);
+            this.getWhiteSide().getChildren().addAll(circle, getWhiteMoveText());
+            this.getWhiteSide().setAlignment(Pos.BASELINE_LEFT);
         }
 
         private void initBlackSide() {
             Circle circle = new Circle(5, Color.BLACK);
             circle.setStroke(Color.BLACK);
-            this.blackMoveText.setLineSpacing(1);
-            this.blackSide.getChildren().addAll(blackMoveText, circle);
-            this.blackSide.setAlignment(Pos.BASELINE_RIGHT);
+            this.getBlackMoveText().setLineSpacing(1);
+            this.getBlackSide().getChildren().addAll(getBlackMoveText(), circle);
+            this.getBlackSide().setAlignment(Pos.BASELINE_RIGHT);
         }
 
         public void swapSides() {
             Stack<Node> tempStack = new Stack();
-            tempStack.push(blackSide.getChildren().get(0));
-            tempStack.push(blackSide.getChildren().get(1));
-            blackSide.getChildren().clear();
-            blackSide.getChildren().addAll(whiteSide.getChildren().remove(1), whiteSide.getChildren().remove(0));
-            whiteSide.getChildren().clear();
-            whiteSide.getChildren().addAll(tempStack.pop(), tempStack.pop());
+            tempStack.push(getBlackSide().getChildren().get(0));
+            tempStack.push(getBlackSide().getChildren().get(1));
+            getBlackSide().getChildren().clear();
+            getBlackSide().getChildren().addAll(getWhiteSide().getChildren().remove(1), getWhiteSide().getChildren().remove(0));
+            getWhiteSide().getChildren().clear();
+            getWhiteSide().getChildren().addAll(tempStack.pop(), tempStack.pop());
+        }
+
+        public StackPane getBoardBackground() {
+            return boardBackground;
+        }
+
+        public BoardPane getBoardPane() {
+            return boardPane;
+        }
+
+        public Text getWhiteMoveText() {
+            return whiteMoveText;
+        }
+
+        public Text getBlackMoveText() {
+            return blackMoveText;
+        }
+
+        public HBox getWhiteSide() {
+            return whiteSide;
+        }
+
+        public HBox getBlackSide() {
+            return blackSide;
+        }
+
+        public int getDepth() {
+            return depth;
         }
 
         public final class BoardPane extends GridPane {
@@ -324,12 +420,12 @@ public class GUI extends Stage {
                         if (board.currentPlayer().getPlayerType().isComputer()) {
                             if (!moves.isEmpty()) {
                                 updatePage();
-                                computerMoveExecutor.schedule(new AIThinker(board, depth),
-                                        1500,
+                                computerMoveExecutor.schedule(new AIThinker(board, getDepth()),
+                                        1000,
                                         TimeUnit.MILLISECONDS);
                             }
                             else
-                                computerMoveExecutor.schedule(new AIThinker(board, depth),
+                                computerMoveExecutor.schedule(new AIThinker(board, getDepth()),
                                                          500,
                                                               TimeUnit.MILLISECONDS);
                         }
@@ -349,11 +445,11 @@ public class GUI extends Stage {
                 }
             }
 
-            public void updatePage() {
-                if (pagination.getCurrentPageIndex() == gamePanes.size() - 1)
-                    pagination.setCurrentPageIndex(0);
+            public synchronized void updatePage() {
+                if (gamesViewer.getPagination().getCurrentPageIndex() == gamePanes.size() - 1)
+                    gamesViewer.getPagination().setCurrentPageIndex(0);
                 else
-                    pagination.setCurrentPageIndex(pagination.getCurrentPageIndex() + 1);
+                    gamesViewer.getPagination().setCurrentPageIndex(gamesViewer.getPagination().getCurrentPageIndex() + 1);
             }
 
             private class AIThinker implements Runnable {
@@ -372,7 +468,7 @@ public class GUI extends Stage {
                         MiniMax minimax = new MiniMax(this.board, this.searchDepth);
                         Move bestMove = minimax.compute();
                         moves.push(bestMove);
-                        boardPane.updateBoard(board.currentPlayer().makeMove(bestMove).getTransitionBoard());
+                        getBoardPane().updateBoard(board.currentPlayer().makeMove(bestMove).getTransitionBoard());
                     }
                 }
             }
@@ -381,12 +477,12 @@ public class GUI extends Stage {
                 if (!this.moves.isEmpty()) {
                     String lastMoveToString = checkOrCheckMate(board, moves.peek());
                     if (this.moves.size() % 2 == 0) {
-                        blackMoveText.setText(this.moves.size() / 2 + "..." + lastMoveToString);
-                        whiteMoveText.setText(this.moves.size() / 2 + 1 + ".?");
+                        getBlackMoveText().setText(this.moves.size() / 2 + "..." + lastMoveToString);
+                        getWhiteMoveText().setText(this.moves.size() / 2 + 1 + ".?");
                     }
                     else {
-                        blackMoveText.setText((this.moves.size() + 1) / 2 + "...?");
-                        whiteMoveText.setText((this.moves.size() + 1) / 2 + "." + lastMoveToString);
+                        getBlackMoveText().setText((this.moves.size() + 1) / 2 + "...?");
+                        getWhiteMoveText().setText((this.moves.size() + 1) / 2 + "." + lastMoveToString);
                     }
                 }
             }
@@ -411,16 +507,16 @@ public class GUI extends Stage {
 
             private void updateResultAsLoss(final Player playerThatLost) {
                 if (playerThatLost.getAlliance().isWhite())
-                    whiteMoveText.setText("0-1");
+                    getWhiteMoveText().setText("0-1");
                 else
-                    blackMoveText.setText("1-0");
+                    getBlackMoveText().setText("1-0");
             }
 
             private void updateResultAsDraw(final Player playerToMove) {
                 if (playerToMove.getAlliance().isWhite())
-                    whiteMoveText.setText("1/2-1/2");
+                    getWhiteMoveText().setText("1/2-1/2");
                 else
-                    blackMoveText.setText("1/2-1/2");
+                    getBlackMoveText().setText("1/2-1/2");
             }
 
             private void setPieceToMove(Piece pieceToMove) {
@@ -450,7 +546,10 @@ public class GUI extends Stage {
 
                 setOnMouseClicked(e -> {
                     Board chessBoard = boardPane.board;
-                    if (!boardPane.gameOver && chessBoard.currentPlayer().getPlayerType().isHuman() && st.getStatus() != Animation.Status.RUNNING) {
+                    if (!boardPane.gameOver &&
+                        chessBoard.currentPlayer().getPlayerType().isHuman() &&
+                        gamesViewer.getSt().getStatus() != Animation.Status.RUNNING) {
+
                         if (e.getButton() == MouseButton.PRIMARY) {
                             if (boardPane.sourceTile == null) {
                                 // first click
