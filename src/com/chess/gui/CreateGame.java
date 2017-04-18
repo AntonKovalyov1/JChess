@@ -6,6 +6,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
@@ -22,7 +23,8 @@ public class CreateGame extends Stage {
     private ColorChoice colorChoice;
     private Difficulty difficulty;
 
-    public CreateGame() {
+    public CreateGame(String title) {
+        setTitle(title);
         numberOfGames = -1;
         colorChoice = ColorChoice.WHITE;
         difficulty = Difficulty.EASY;
@@ -30,6 +32,7 @@ public class CreateGame extends Stage {
     }
 
     public void initialize() {
+        getIcons().add(new Image("images/mainIcon.jpg"));
         final TextField numberOfGamesField = new TextField();
         numberOfGamesField.setPrefWidth(110);
         final Label numberOfGamesLabel = new Label("Number of Games: ");
@@ -103,7 +106,6 @@ public class CreateGame extends Stage {
 
         Scene scene = new Scene(mainVB);
         setScene(scene);
-        setTitle("Match");
         setResizable(false);
         initModality(Modality.APPLICATION_MODAL);
         showAndWait();

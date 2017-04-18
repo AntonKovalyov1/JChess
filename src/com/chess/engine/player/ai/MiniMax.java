@@ -59,6 +59,12 @@ public class MiniMax extends RecursiveTask implements MoveStrategy {
                     lowestSeenValue = currentValue;
                     bestMove = move;
                 }
+                try {
+                    Thread.sleep(0);
+                }
+                catch (InterruptedException ex) {
+                    return bestMove;
+                }
             }
         }
 
