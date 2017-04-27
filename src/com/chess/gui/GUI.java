@@ -61,7 +61,7 @@ public class GUI extends Stage {
         List<GamePane> games = new ArrayList<>();
         games.add(new GamePane(0, Board.createStandardGameBoard(PlayerType.HUMAN, PlayerType.HUMAN), Difficulty.EASY.getDepth()));
         this.gamesViewer = new GamesViewer(games);
-        getGamesViewer().gameOverControls();
+        getGamesViewer().noGameControls();
         getMainBorderPane().setTop(createMenuBar());
         getMainBorderPane().setCenter(getGamesViewer());
         getMainBorderPane().setBottom(getFooter());
@@ -101,7 +101,8 @@ public class GUI extends Stage {
         cheatCheckMenuItem.setOnAction(e -> {
             cheatAll = cheatCheckMenuItem.isSelected();
             for (int i = 0; i < getGamesViewer().getGames().size(); i++) {
-                getGamesViewer().getGames().get(i).getBoardPane().redrawBoard();
+                BoardPane current = getGamesViewer().getGames().get(i).getBoardPane();
+                current.redrawBoard(current.getCurrentViewBoard());
             }
         });
 
@@ -117,7 +118,8 @@ public class GUI extends Stage {
         highlightCheckMenuItem.setOnAction(e -> {
             this.setHighlightLegalMoves(highlightCheckMenuItem.isSelected());
             for (int i = 0; i < getGamesViewer().getGames().size(); i++) {
-                getGamesViewer().getGames().get(i).getBoardPane().redrawBoard();
+                BoardPane current = getGamesViewer().getGames().get(i).getBoardPane();
+                current.redrawBoard(current.getCurrentViewBoard());
             }
         });
         highlightCheckMenuItem.setSelected(true);
@@ -135,7 +137,7 @@ public class GUI extends Stage {
                 final Difficulty difficulty = createGame.getDifficulty();
                 List<GamePane> games = new ArrayList<>();
                 for (int i = 0; i < numberOfGames; i++) {
-                    if (colorChoice.getAlliance() == Alliance.WHITE)
+                    if (colorChoice.getAlliance().isWhite())
                         games.add(new GamePane(i, Board.createStandardGameBoard(PlayerType.HUMAN, PlayerType.COMPUTER), difficulty.getDepth()));
                     else
                         games.add(new GamePane(i, Board.createStandardGameBoard(PlayerType.COMPUTER, PlayerType.HUMAN), difficulty.getDepth()));
@@ -152,6 +154,15 @@ public class GUI extends Stage {
                 final int numberOfGames = createGame.getNumberOfGames();
                 final ColorChoice colorChoice = createGame.getColorChoice();
                 final Difficulty difficulty = createGame.getDifficulty();
+                final int offset = getGamesViewer().getGames().size();
+                List<GamePane> games = new ArrayList<>();
+                for (int i = offset; i < numberOfGames + offset; i++) {
+                    if (colorChoice.getAlliance().isWhite())
+                        games.add(new GamePane(i, Board.createStandardGameBoard(PlayerType.HUMAN, PlayerType.COMPUTER), difficulty.getDepth()));
+                    else
+                        games.add(new GamePane(i, Board.createStandardGameBoard(PlayerType.COMPUTER, PlayerType.HUMAN), difficulty.getDepth()));
+                }
+                getGamesViewer().addGames(games);
             }
         });
 
@@ -232,7 +243,7 @@ public class GUI extends Stage {
 
         private final List<GamePane> games;
         private final List<GamePane> activeGames;
-        private final Pagination pagination;
+        private Pagination pagination;
         private final Button btResign = resignButton();
         private final Button btDraw = drawButton();
         private final Button btWin = winButton();
@@ -250,7 +261,7 @@ public class GUI extends Stage {
         public GamesViewer(List<GamePane> games) {
             this.games = games;
             this.activeGames  = new ArrayList<>(getGames());
-            this.pagination = createPaginationControl();
+            this.setPagination(createPaginationControl(0));
             this.currentGame = games.get(0);
             initialize();
         }
@@ -267,18 +278,18 @@ public class GUI extends Stage {
         public VBox createOptions() {
             VBox options = new VBox();
             options.setPadding(new Insets(20, 20, 0, 2));
-            options.getChildren().addAll(btMakeMove, btResign, btDraw, btWin, getBtCheat(), btFlip, btTakeBack, btResetGame);
+            options.getChildren().addAll(getBtMakeMove(), getBtResign(), getBtDraw(), getBtWin(), getBtCheat(), getBtFlip(), getBtTakeBack(), getBtResetGame());
             return options;
         }
 
-        public Pagination createPaginationControl() {
+        public Pagination createPaginationControl(int currentIndex) {
             Pagination p = new Pagination(getGames().size());
             p.currentPageIndexProperty().addListener((InvalidationListener) -> {
                 disableControls();
                 final GamePane nextGame = getGames().get(getPagination().getCurrentPageIndex());
                 if (nextGame.getBoardPane().isCheat()) {
                     nextGame.getBoardPane().setCheat(false);
-                    nextGame.getBoardPane().redrawBoard();
+                    nextGame.getBoardPane().redrawBoard(nextGame.getBoardPane().getCurrentViewBoard());
                 }
                 if (getSmoothTransitionMenuItem().isSelected())
                     smoothTransition(nextGame);
@@ -326,20 +337,47 @@ public class GUI extends Stage {
         }
 
         public void updatePage() {
-            Platform.runLater(() -> {
+            if (!getActiveGames().isEmpty()) {
                 setPreviousGame(getCurrentGame());
                 int i = getActiveGames().indexOf(getCurrentGame());
                 if (i == getActiveGames().size() - 1)
                     getPagination().setCurrentPageIndex(getActiveGames().get(0).getGameID());
                 else
                     getPagination().setCurrentPageIndex(getActiveGames().get(i + 1).getGameID());
-            });
+//                if (getActiveGames().get(getPagination().getCurrentPageIndex()).getBoardPane().isGameOver()) {
+//                    new Thread(() -> {
+//                        try {
+//                            if (getSmoothTransitionMenuItem().isSelected()) {
+//                                Thread.sleep(3000);
+//                                updatePage();
+//                            }
+//                            else {
+//                                Thread.sleep(2000);
+//                                updatePage();
+//                            }
+//                        }
+//                        catch (InterruptedException ex) {
+//
+//                        }
+//                    }).start();
+//                }
+            }
         }
 
-        public void addGame(GamePane game) {
-            getPagination().setPageCount(getPagination().getPageCount() + 1);
-            getGames().add(game);
-            getActiveGames().add(game);
+        public void addGames(List<GamePane> games) {
+            int currentGameIndex = getPagination().getCurrentPageIndex();
+            getGames().addAll(games);
+            getActiveGames().addAll(games);
+            if (getSmoothTransitionMenuItem().isSelected()) {
+                getSmoothTransitionMenuItem().setSelected(false);
+                getPagination().setPageCount(getGames().size());
+                getPagination().setCurrentPageIndex(currentGameIndex);
+                getSmoothTransitionMenuItem().setSelected(true);
+            }
+            else {
+                getPagination().setPageCount(getGames().size());
+                getPagination().setCurrentPageIndex(currentGameIndex);
+            }
         }
 
 
@@ -397,14 +435,15 @@ public class GUI extends Stage {
             b.setId("cheat-button");
             b.getStyleClass().add("options-buttons");
             b.setOnAction(e -> {
-                if (getCurrentGame().getBoardPane().isCheat()) {
-                    getCurrentGame().getBoardPane().setCheat(false);
-                    getCurrentGame().getBoardPane().redrawBoard();
+                BoardPane boardPane = getCurrentGame().getBoardPane();
+                if (boardPane.isCheat()) {
+                    boardPane.setCheat(false);
+                    boardPane.redrawBoard(boardPane.getCurrentViewBoard());
                     b.setId("cheat-button");
                 }
                 else {
-                    getCurrentGame().getBoardPane().setCheat(true);
-                    getCurrentGame().getBoardPane().redrawBoard();
+                    boardPane.setCheat(true);
+                    boardPane.redrawBoard(boardPane.getCurrentViewBoard());
                     b.setId("play-fair-button");
                 }
             });
@@ -466,6 +505,14 @@ public class GUI extends Stage {
             getPagination().setDisable(false);
         }
 
+        public void noGameControls() {
+            disableControls();
+            getBtCheat().setDisable(false);
+            getBtFlip().setDisable(false);
+            getBtTakeBack().setDisable(false);
+            getBtResetGame().setDisable(false);
+        }
+
         public List<GamePane> getGames() {
             return games;
         }
@@ -516,6 +563,30 @@ public class GUI extends Stage {
 
         public void setPreviousGame(GamePane previousGame) {
             this.previousGame = previousGame;
+        }
+
+        public Button getBtResign() {
+            return btResign;
+        }
+
+        public Button getBtDraw() {
+            return btDraw;
+        }
+
+        public Button getBtWin() {
+            return btWin;
+        }
+
+        public Button getBtTakeBack() {
+            return btTakeBack;
+        }
+
+        public Button getBtResetGame() {
+            return btResetGame;
+        }
+
+        public void setPagination(Pagination pagination) {
+            this.pagination = pagination;
         }
     }
 
@@ -575,9 +646,10 @@ public class GUI extends Stage {
         }
 
         private void flipBoard() {
-            Collections.reverse(this.getBoardPane().getBoardTiles());
+            BoardPane boardPane = this.getBoardPane();
+            Collections.reverse(boardPane.getBoardTiles());
             swapSides();
-            this.getBoardPane().redrawBoard();
+            boardPane.redrawBoard(boardPane.getCurrentViewBoard());
         }
 
         private void initWhiteSide() {
@@ -603,7 +675,9 @@ public class GUI extends Stage {
             b.setId("next-next-button");
             b.getStyleClass().add("replay-button");
             b.setOnAction(e -> {
-
+                if (!getBoardPane().getMoves().isEmpty()) {
+                    getBoardPane().redrawBoard(getBoardPane().lastBoard());
+                }
             });
             return b;
         }
@@ -613,7 +687,9 @@ public class GUI extends Stage {
             b.setId("prev-prev-button");
             b.getStyleClass().add("replay-button");
             b.setOnAction(e -> {
-
+                if (!getBoardPane().getMoves().isEmpty()) {
+                    getBoardPane().redrawBoard(getBoardPane().firstBoard());
+                }
             });
             return b;
         }
@@ -623,7 +699,9 @@ public class GUI extends Stage {
             b.setId("next-button");
             b.getStyleClass().add("replay-button");
             b.setOnAction(e -> {
-
+                if (!getBoardPane().getMoves().isEmpty()) {
+                    getBoardPane().redrawBoard(getBoardPane().nextBoard());
+                }
             });
             return b;
         }
@@ -633,7 +711,9 @@ public class GUI extends Stage {
             b.setId("prev-button");
             b.getStyleClass().add("replay-button");
             b.setOnAction(e -> {
-
+                if (!getBoardPane().getMoves().isEmpty()) {
+                    getBoardPane().redrawBoard(getBoardPane().previousBoard());
+                }
             });
             return b;
         }
@@ -731,6 +811,24 @@ public class GUI extends Stage {
                     moves.pop();
                     Board board = moves.pop().getBoard();
                     getBoardPane().updateBoard(board);
+                }
+            }
+        }
+
+        private void updateMovesText(final Board board, final Move move, final int moveNumber) {
+            if (move == null) {
+                getWhiteMoveText().setText("1.?");
+                getBlackMoveText().setText("");
+            }
+            else {
+                String moveToString = getBoardPane().checkOrCheckMate(board, move);
+                if (moveNumber % 2 == 0) {
+                    getBlackMoveText().setText(moveNumber / 2 + "..." + moveToString);
+                    getWhiteMoveText().setText(moveNumber / 2 + 1 + ".?");
+                }
+                else {
+                    getBlackMoveText().setText((moveNumber + 1) / 2 + "...?");
+                    getWhiteMoveText().setText((moveNumber + 1) / 2 + "." + moveToString);
                 }
             }
         }
@@ -856,11 +954,13 @@ public class GUI extends Stage {
         private Piece pieceToMove;
         private Tile sourceTile;
         private Tile destinationTile;
+        private Move lastMove;
         private boolean gameOver;
         private boolean cheat;
         private volatile boolean interrupt;
         private Future<?> futureComputerMove;
         private volatile boolean running;
+        private int currentBoardIndex = 0;
 
         public BoardPane(GamePane game, Board board, int depth) {
             this.game = game;
@@ -884,28 +984,30 @@ public class GUI extends Stage {
 
         public synchronized void updateBoard(Board board) {
             setBoard(board);
-            updateMovesText(board);
+            setCurrentBoardIndex(getMoves().size());
+            if (!getMoves().isEmpty()) {
+                getGame().updateMovesText(board, getMoves().peek(), getMoves().size());
+                setLastMove(getMoves().peek());
+            }
+            else
+                setLastMove(null);
             isGameOver(board);
-            redrawBoard();
-            setInterrupt(false);
-            setRunning(false);
-            if (board.currentPlayer().getPlayerType().isComputer()) {
+            redrawBoard(board);
+            if (board.currentPlayer().getPlayerType().isComputer() && !isGameOver()) {
                 makeMove();
             }
         }
 
-        public synchronized void redrawBoard() {
-            Platform.runLater(() -> {
-                getChildren().clear();
-                int index = 0;
-                for (int i = 0; i < BoardUtils.NUM_TILES_PER_ROW; i++) {
-                    for (int j = 0; j < BoardUtils.NUM_TILES_PER_ROW; j++) {
-                        this.getBoardTiles().get(index).drawTile(getBoard());
-                        add(this.getBoardTiles().get(index), j, i);
-                        index++;
-                    }
+        public synchronized void redrawBoard(Board board) {
+            getChildren().clear();
+            int index = 0;
+            for (int i = 0; i < BoardUtils.NUM_TILES_PER_ROW; i++) {
+                for (int j = 0; j < BoardUtils.NUM_TILES_PER_ROW; j++) {
+                    this.getBoardTiles().get(index).drawTile(board);
+                    add(this.getBoardTiles().get(index), j, i);
+                    index++;
                 }
-            });
+            }
         }
 
         public void makeMove() {
@@ -931,22 +1033,6 @@ public class GUI extends Stage {
             }
         }
 
-        private void updateMovesText(final Board board) {
-            Platform.runLater(() -> {
-                if (!this.getMoves().isEmpty()) {
-                    String lastMoveToString = checkOrCheckMate(board, getMoves().peek());
-                    if (this.getMoves().size() % 2 == 0) {
-                        getGame().getBlackMoveText().setText(this.getMoves().size() / 2 + "..." + lastMoveToString);
-                        getGame().getWhiteMoveText().setText(this.getMoves().size() / 2 + 1 + ".?");
-                    }
-                    else {
-                        getGame().getBlackMoveText().setText((this.getMoves().size() + 1) / 2 + "...?");
-                        getGame().getWhiteMoveText().setText((this.getMoves().size() + 1) / 2 + "." + lastMoveToString);
-                    }
-                }
-            });
-        }
-
         private String checkOrCheckMate(final Board board, final Move move) {
             if (board.currentPlayer().isInCheckMate())
                 return move + "#";
@@ -956,17 +1042,22 @@ public class GUI extends Stage {
         }
 
         private void isGameOver(final Board board) {
-            Platform.runLater(() -> {
-                if (board.currentPlayer().isInCheckMate()) {
-                    setGameOver(true);
-                    updateResultAsLoss(board.currentPlayer(), board.currentPlayer());
-                }
-                else if (board.currentPlayer().isInStalemate()) {
-                    setGameOver(true);
-                    updateResultAsDraw(board.currentPlayer());
-                    //TODO
-                }
-            });
+            if (board.currentPlayer().isInCheckMate()) {
+                setGameOver(true);
+                updateResultAsLoss(board.currentPlayer(), board.currentPlayer());
+                getGamesViewer().gameOverControls();
+            }
+            else if (board.currentPlayer().isInStalemate()) {
+                setGameOver(true);
+                updateResultAsDraw(board.currentPlayer());
+                getGamesViewer().gameOverControls();
+            }
+            if (isGameOver()) {
+//                if (getGamesViewer().getCurrentGame() == getGame()) {
+//                    getGamesViewer().updatePage();
+//                    getGamesViewer().getActiveGames().remove(getGamesViewer().getPreviousGame());
+//                }
+            }
         }
 
         private void updateResultAsLoss(final Player playerThatLost, final Player currentPlayer) {
@@ -995,6 +1086,66 @@ public class GUI extends Stage {
             setSourceTile(null);
             setDestinationTile(null);
             setPieceToMove(null);
+        }
+
+        public Board previousBoard() {
+            if (getCurrentBoardIndex() < 2) {
+                return firstBoard();
+            }
+            setCurrentBoardIndex(getCurrentBoardIndex() - 1);
+            Board board = getMoves().get(getCurrentBoardIndex()).getBoard();
+            Move move = getMoves().get(getCurrentBoardIndex() - 1);
+            setLastMove(move);
+            resetMoveSelection();
+            getGame().updateMovesText(board, move, getCurrentBoardIndex());
+            return board;
+        }
+
+        public Board nextBoard() {
+            if (getCurrentBoardIndex() >= getMoves().size() - 1) {
+                return lastBoard();
+            }
+            setCurrentBoardIndex(getCurrentBoardIndex() + 1);
+            Board board = getMoves().get(getCurrentBoardIndex()).getBoard();
+            Move move = getMoves().get(getCurrentBoardIndex() - 1);
+            setLastMove(move);
+            resetMoveSelection();
+            getGame().updateMovesText(board, move, getCurrentBoardIndex());
+            return board;
+        }
+
+        public Board firstBoard() {
+            setCurrentBoardIndex(0);
+            Board board = getMoves().get(getCurrentBoardIndex()).getBoard();
+            setLastMove(null);
+            resetMoveSelection();
+            getGame().updateMovesText(board, null, 0);
+            return board;
+        }
+
+        public Board lastBoard() {
+            setCurrentBoardIndex(getMoves().size());
+            Move move = getMoves().get(getCurrentBoardIndex() - 1);
+            setLastMove(move);
+            resetMoveSelection();
+            getGame().updateMovesText(getBoard(), move, getCurrentBoardIndex());
+            return getBoard();
+        }
+
+        public Board getCurrentViewBoard() {
+            if (getMoves().isEmpty() || getCurrentBoardIndex() == getMoves().size())
+                return getBoard();
+            if (getCurrentBoardIndex() == 0)
+                return firstBoard();
+            return getMoves().get(getCurrentBoardIndex()).getBoard();
+        }
+
+        public int getCurrentBoardIndex() {
+            return currentBoardIndex;
+        }
+
+        public void setCurrentBoardIndex(int currentBoardIndex) {
+            this.currentBoardIndex = currentBoardIndex;
         }
 
         public boolean isCheat() {
@@ -1083,6 +1234,14 @@ public class GUI extends Stage {
 
         public void setRunning(boolean running) {
             this.running = running;
+        }
+
+        public Move getLastMove() {
+            return lastMove;
+        }
+
+        public void setLastMove(Move lastMove) {
+            this.lastMove = lastMove;
         }
     }
 
@@ -1181,8 +1340,8 @@ public class GUI extends Stage {
                     highlightLegals(getTileSelection(), board);
                 }
             }
-            else if (!getBoardPane().getMoves().isEmpty()) {
-                Move lastMove = getBoardPane().getMoves().peek();
+            else {
+                Move lastMove = getBoardPane().getLastMove();
                 if (lastMove != null) {
                     if (lastMove.getCurrentCoordinate() == getTileID()) {
                         highlightSourceTile(getTileSelection(), lastMove.getMovedPiece().getPieceAlliance());
@@ -1292,8 +1451,12 @@ public class GUI extends Stage {
                 Move bestMove = minimax.compute();
                 if (!getBoardPane().isInterrupt()) {
                     getBoardPane().getMoves().push(bestMove);
-                    getBoardPane().updateBoard(board.currentPlayer().makeMove(bestMove).getTransitionBoard());
+                    Platform.runLater(() -> {
+                        getBoardPane().updateBoard(board.currentPlayer().makeMove(bestMove).getTransitionBoard());
+                    });
                 }
+                getBoardPane().setInterrupt(false);
+                getBoardPane().setRunning(false);
             }
         }
 
